@@ -49,5 +49,33 @@ std::string convertToUtf8(Encoding enc, char *src, size_t src_size){
 	return std::string(dst.get());
 }
 
+std::string convertUnicode(std::string text) {
+	using namespace std;
+	for(auto&& esc : {"¥U+"s, "\\U+"s, "¥u+"s, "\\u+"s}){
+		const size_t esc_length = esc.size();
+
+		for (size_t done_pos = 0; true; ++done_pos) {
+			size_t pos = text.find(esc, done_pos);
+			if (pos == std::string::npos)
+				break;
+
+			//現状、\\U+4文字のみ対応
+			std::string target = text.substr(pos + esc_length, 4);
+			if (target.size() < 4)
+				break;
+
+			char target_u16[2];
+			try {
+				target_u16[1] = std::stoi(target.substr(0, 2), nullptr, 16);
+				target_u16[0] = std::stoi(target.substr(2, 2), nullptr, 16);
+			} catch (std::invalid_argument& e) {
+				throw std::runtime_error("invalid U+.... string");
+			}
+			text.replace(pos, esc_length + 4,  convertToUtf8(Encoding::utf16, target_u16, 2) );
+		}
+	}
+	return text;
+}
+
 }	// ~ namespace encoding_fixer
 
