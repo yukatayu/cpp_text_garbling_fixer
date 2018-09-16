@@ -105,6 +105,10 @@ std::string convertToUtf8(Encoding enc, char *src, size_t src_size){
 	return std::string(dst.get());
 }
 
+std::string guessAndConvertToUtf8(const std::string& text, size_t size = auto_detect){
+	return convertToUtf8(guessEncoding(text), const_cast<char*>(text.data()), size == auto_detect ? text.size() : size);
+}
+
 std::string convertUnicode(std::string text) {
 	using namespace std;
 	for(auto&& esc : {"¥U+"s, "\\U+"s, "¥u+"s, "\\u+"s}){
