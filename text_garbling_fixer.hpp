@@ -29,6 +29,62 @@ const char* const getEncChar(Encoding enc){
 	}
 }
 
+Encoding guessEncoding(const std::string& text){
+	std::array<unsigned, static_cast<size_t>(Encoding::size)> err_table;
+
+	auto try_decode = [&](Encoding enc) {
+		iconv_t iconv_handler;
+
+		// UTF-32へ変換を試みる(UCS-4の3つのうちどれが有効なのかは環境依存)
+		for (const char* iconv_encode : {"UCS-4-INTERNAL", "UCS-4", "UCS-4-SWAPPED"}) {
+			iconv_handler = iconv_open(iconv_encode, getEncChar(enc));
+			if (iconv_handler != iconv_err)
+				break;
+		}
+		if (iconv_handler == iconv_err)
+			throw std::runtime_error("Cannot handle utf32");
+
+		auto& error_count = err_table[static_cast<int>(enc)];
+
+		size_t src_size = text.size();
+		size_t dst_size = src_size*8;
+
+		char* src = const_cast<char*>(text.data());
+		std::unique_ptr<char[]> dst(new char[dst_size]());
+		char *dst_p = dst.get();
+
+		char* src_cpy = src;
+		char* dst_cpy = dst_p;
+
+		// カウントはiconvが制御する
+		while (0 < src_size) {
+			size_t iconv_return = iconv(iconv_handler, &src_cpy, &src_size, &dst_cpy, &dst_size);
+			if (errno == EILSEQ) { //無効なバイトシーケンス(signal定数)
+				++error_count;
+				++src_cpy;
+				--src_size;
+				continue;
+			}
+			if (iconv_return == -1)
+				break;	// 読み込み失敗
+		}
+		iconv_close(iconv_handler);
+	};
+
+	for (int enc = 0; enc != static_cast<int>(Encoding::size); ++enc) {
+		if(enc == static_cast<int>(Encoding::utf16))
+			continue;
+		err_table[enc] = 0;
+		try_decode(static_cast<Encoding>(enc));
+	}
+
+	return static_cast<Encoding>(
+		std::min_element(err_table.begin(), err_table.end(), [](unsigned a, unsigned b) {
+			return a < b;
+		}) - err_table.begin()
+	);
+}
+
 std::string convertToUtf8(Encoding enc, char *src, size_t src_size){
 	iconv_t iconv_handler = iconv_open(getEncChar(Encoding::utf8), getEncChar(enc));
 	if (iconv_handler == iconv_err)
